@@ -104,7 +104,12 @@ prod-up:
 
 .PHONY: prod-init
 prod-init:
-	cp ./laravel/.env.production ./laravel/.env
+	if [ -f ./laravel/.env.production ]; then \
+		cp ./laravel/.env.production ./laravel/.env; \
+	else \
+		echo ".env.production file not found. Please create it before running this command."; \
+		exit 1; \
+	fi
 	docker compose -f docker-compose-prod.yml build --no-cache
 	make prod-up
 	docker compose -f docker-compose-prod.yml exec -it app php artisan migrate:fresh --seed
@@ -116,8 +121,8 @@ prod-down:
 # ローカルでの本番環境構築
 # make destroy
 # 一応envは確認しておく
-# make production-init
+# make prod-init
 #
 # 終了時
-# make production-down
+# make prod-down
 # make destroy

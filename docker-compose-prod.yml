@@ -1,0 +1,24 @@
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: ./infra/production/nginx/Dockerfile
+    ports:
+      - "48080:80"
+    depends_on: # 片方のみつけないとプロセス終了した？
+      - db
+  app:
+    build:
+      context: .
+      dockerfile: ./infra/production/php/Dockerfile
+    depends_on:
+      - db
+  db: # AWS上ではRDS
+    build: ./infra/development/mysql
+    volumes:
+      - db-store:/var/lib/mysql
+    ports:
+      - "43306:3306"
+
+volumes:
+  db-store:

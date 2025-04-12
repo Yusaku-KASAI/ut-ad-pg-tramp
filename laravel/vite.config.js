@@ -1,8 +1,10 @@
+import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
 import laravel from "laravel-vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     laravel({
@@ -40,6 +42,7 @@ export default defineConfig({
     alias: {
       // DOM内テンプレートを使用する場合この指定が必要
       vue: "vue/dist/vue.esm-bundler.js",
+      "@pages": fileURLToPath(new URL("./resources/js/pages", import.meta.url)),
     },
   },
 });

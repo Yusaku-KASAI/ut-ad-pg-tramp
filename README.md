@@ -40,6 +40,7 @@ store/でpinia定義
 その他ディレクトリ切り分け(components,composables,layouts,middleware,pages,store)
 components配下はatoms,molecules,organisms
 composables配下はcomponents(componentsのロジック),container(pagesのロジック),repositories(laravelアクセス),その他ロジック
+(ディレクトリ切り分けちゃんとやるのはきつかったのでそのあたりはmail-to-lineのvue参照で)
 vite.vonfig.jsでエイリアス指定
 Exampleコンポーネントで簡易的にユーザーCRUD&認証
 ```

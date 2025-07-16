@@ -10,8 +10,8 @@
           先手: {{ firstPlayerLabel }}　 後手: {{ secondPlayerLabel }}
         </div>
         <div class="scores">
-          <div class="score-a">A: {{ scores.A }}点</div>
-          <div class="score-b">B: {{ scores.B }}点</div>
+          <div class="score-a">プレイヤーA: {{ scores.A }}点</div>
+          <div class="score-b">プレイヤーB: {{ scores.B }}点</div>
         </div>
       </div>
 
@@ -22,7 +22,7 @@
         </button>
       </div>
 
-      <!-- 先手：カード選択 + 戦略 -->
+      <!-- 先手：カード選択＋戦略 -->
       <div v-if="phase === 'choose'" class="phase-content">
         <p class="phase-title" :class="firstPlayerClass">
           {{ firstPlayerLabel }} のターン: カードを選択し戦略を決定
@@ -42,7 +42,9 @@
         <p class="phase-title" :class="secondPlayerClass">
           {{ secondPlayerLabel }} のターン: ヒントを参考にカードを選択
         </p>
-        <div class="message-info">ヒントはカードの点滅で示されています</div>
+        <div class="message-info">
+          ヒントは点滅するカード位置で示されています
+        </div>
       </div>
 
       <!-- 結果 -->
@@ -56,11 +58,17 @@
           <p class="result-details">
             {{ secondPlayerLabel }} の選択:
             {{ lastResult.success ? "正解" : "不正解" }}
+            <span v-if="lastResult.sameCard"
+              >(同じカードを選択したため失敗)</span
+            >
           </p>
           <p class="result-scores">
             得点 - {{ firstPlayerLabel }}:+{{ lastResult.firstScore }},
             {{ secondPlayerLabel }}:+{{ lastResult.secondScore }}
           </p>
+          <button class="btn btn-primary btn-large" @click="nextTurn">
+            次のターンへ
+          </button>
         </div>
       </div>
 
@@ -96,13 +104,13 @@
       <h3 class="rules-title">ルール</h3>
       <div class="rules-list">
         <p>• 先手がカードを選び「協力 / 裏切り」を宣言</p>
-        <p>• 協力: 位置を正しく点滅　裏切り: 30%で正・70%で誤位置を点滅</p>
-        <p>• 後手がカードを当てる（数字が同じなら正解）</p>
+        <p>• 協力: 正しい位置が点滅　裏切り: 30%で正・70%で誤位置が点滅</p>
+        <p>• 後手がカードを当てる（数字が同じ かつ 別カードなら正解）</p>
         <p>
           • 得点: 協力成功(3,7) / 協力失敗(1,1) / 裏切り成功(1,8) /
           裏切り失敗(5,2)
         </p>
-        <p>• 全カードが表になった時点で終了</p>
+        <p>• 全カードが表になったら終了</p>
       </div>
     </div>
   </div>
@@ -116,18 +124,19 @@ const suits = ["♠", "♥", "♦", "♣"];
 const numbers = [1, 2, 3, 4, 5];
 
 /* ---------- 状態 ---------- */
-const cards = ref([]); // 全カード
-const revealed = ref([]); // 表向きフラグ
+const cards = ref([]);
+const revealed = ref([]);
 const phase = ref("setup"); // setup | choose | guess | result | gameOver
 const firstPlayer = ref("A"); // 'A' or 'B'
 const selectedCard = ref(null); // 先手が選んだ index
-const hintIndex = ref(null); // 点滅させる index
+const hintIndex = ref(null); // 点滅 index
 const firstStrategy = ref(null); // 'cooperate' | 'defect'
 const scores = ref({ A: 0, B: 0 });
 const turnCount = ref(0);
-const lastResult = ref({}); // 結果表示用
+const lastResult = ref({});
+const flipBack = ref([]); // 次ターンで裏返すインデックス配列
 
-/* ---------- 表示用 computed ---------- */
+/* ---------- computed ---------- */
 const firstPlayerLabel = computed(() =>
   firstPlayer.value === "A" ? "プレイヤーA" : "プレイヤーB"
 );
@@ -172,17 +181,17 @@ function resetRound() {
   selectedCard.value = null;
   hintIndex.value = null;
   firstStrategy.value = null;
-  phase.value = "choose";
+  flipBack.value = [];
   turnCount.value += 1;
 }
 
 /* ---------- カードクリック ---------- */
 function onCardClick(idx) {
+  if (revealed.value[idx]) return; // 表向きは選択不可
+
   if (phase.value === "choose" && selectedCard.value === null) {
-    // 先手がカードを選択
     selectedCard.value = idx;
   } else if (phase.value === "guess") {
-    // 後手が推測
     handleGuess(idx);
   }
 }
@@ -201,24 +210,26 @@ function chooseStrategy(strategy) {
       hintIndex.value = selectedCard.value;
     } else {
       const pool = Array.from({ length: 20 }, (_, i) => i).filter(
-        (i) => i !== selectedCard.value
+        (i) => i !== selectedCard.value && !revealed.value[i]
       );
-      hintIndex.value = pool[Math.floor(Math.random() * pool.length)];
+      hintIndex.value = pool.length
+        ? pool[Math.floor(Math.random() * pool.length)]
+        : selectedCard.value;
     }
   }
-
   phase.value = "guess";
 }
 
 /* ---------- 推測 ---------- */
 function handleGuess(guessIdx) {
-  if (phase.value !== "guess") return;
+  if (phase.value !== "guess" || revealed.value[guessIdx]) return;
 
+  const sameCard = guessIdx === selectedCard.value;
   const cardFirst = cards.value[selectedCard.value];
   const cardGuess = cards.value[guessIdx];
-  const success = cardFirst.number === cardGuess.number;
+  const success = !sameCard && cardFirst.number === cardGuess.number;
 
-  // 得点計算
+  // 得点
   const [firstScore, secondScore] =
     firstStrategy.value === "cooperate"
       ? success
@@ -239,42 +250,50 @@ function handleGuess(guessIdx) {
   // 表向き処理
   revealed.value[selectedCard.value] = true;
   revealed.value[guessIdx] = true;
-  if (!success) {
-    // 失敗なら 2.5 秒後に裏返す
-    setTimeout(() => {
-      revealed.value[selectedCard.value] = false;
-      revealed.value[guessIdx] = false;
-    }, 2500);
-  }
+
+  // 失敗なら次ターンで裏返す
+  flipBack.value = success ? [] : [...new Set([selectedCard.value, guessIdx])];
 
   // 結果保存
   lastResult.value = {
     strategy: firstStrategy.value,
     success,
+    sameCard,
     firstScore,
     secondScore,
   };
   phase.value = "result";
-
-  // 次ラウンド or 終了
-  setTimeout(() => {
-    if (revealed.value.every((v) => v)) {
-      phase.value = "gameOver";
-    } else {
-      // 先手交替
-      firstPlayer.value = firstPlayer.value === "A" ? "B" : "A";
-      resetRound();
-    }
-  }, 2500);
 }
 
-/* ---------- クラス計算 ---------- */
+/* ---------- “次のターンへ” ---------- */
+function nextTurn() {
+  // 必要なら裏返す
+  flipBack.value.forEach((i) => (revealed.value[i] = false));
+
+  // 全カード表なら終了
+  if (revealed.value.every((v) => v)) {
+    phase.value = "gameOver";
+    return;
+  }
+
+  // 先手交替 & ラウンド初期化
+  firstPlayer.value = firstPlayer.value === "A" ? "B" : "A";
+  resetRound();
+  phase.value = "choose";
+}
+
+/* ---------- クラス ---------- */
 function cardClass(idx) {
   const cls = ["card"];
   if (revealed.value[idx]) cls.push("revealed");
   if (idx === selectedCard.value && phase.value === "choose")
     cls.push("selected");
-  if (phase.value === "guess" && idx === hintIndex.value) cls.push("hint");
+  if (
+    idx === hintIndex.value &&
+    phase.value === "guess" &&
+    !revealed.value[idx]
+  )
+    cls.push("hint");
   return cls.join(" ");
 }
 function suitClass(s) {
@@ -283,7 +302,7 @@ function suitClass(s) {
 </script>
 
 <style scoped>
-/* -------------------------  スタイルはそのまま  ------------------------- */
+/* ---------- レイアウト ---------- */
 .container {
   max-width: 1000px;
   margin: 0 auto;
@@ -300,65 +319,63 @@ function suitClass(s) {
   color: #333;
 }
 
+/* ---------- ゲームステータス ---------- */
 .game-status {
-  background: white;
+  background: #fff;
   border-radius: 10px;
   padding: 20px;
   margin-bottom: 30px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
-
 .status-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
-
 .round-info {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
 }
-
+.turn-info {
+  font-size: 0.95rem;
+}
 .scores {
   display: flex;
-  gap: 30px;
+  gap: 20px;
 }
-
 .score-a {
   color: #2563eb;
   font-weight: 600;
 }
-
 .score-b {
   color: #dc2626;
   font-weight: 600;
 }
 
+/* ---------- フェーズ ---------- */
 .phase-content {
   text-align: center;
 }
-
 .phase-title {
-  font-size: 1.2rem;
-  margin-bottom: 20px;
+  font-size: 1.1rem;
+  margin-bottom: 15px;
 }
-
 .phase-title.player-a {
   color: #2563eb;
 }
-
 .phase-title.player-b {
   color: #dc2626;
 }
 
+/* ---------- ボタン ---------- */
 .strategy-buttons {
   display: flex;
   gap: 15px;
   justify-content: center;
-  margin-top: 15px;
+  margin-top: 10px;
 }
-
 .btn {
   padding: 10px 20px;
   border: none;
@@ -366,85 +383,76 @@ function suitClass(s) {
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background 0.3s;
 }
-
 .btn-primary {
   background: #2563eb;
-  color: white;
+  color: #fff;
 }
-
 .btn-primary:hover {
   background: #1d4ed8;
 }
-
 .btn-success {
   background: #059669;
-  color: white;
+  color: #fff;
 }
-
 .btn-success:hover {
   background: #047857;
 }
-
 .btn-danger {
   background: #dc2626;
-  color: white;
+  color: #fff;
 }
-
 .btn-danger:hover {
   background: #b91c1c;
 }
-
 .btn-large {
   padding: 15px 30px;
   font-size: 1.2rem;
 }
 
+/* ---------- メッセージ ---------- */
 .message-info {
   background: #f3f4f6;
-  padding: 15px;
+  padding: 12px;
   border-radius: 8px;
   margin-bottom: 20px;
   font-weight: 500;
 }
 
+/* ---------- 結果 ---------- */
 .result-box {
   background: #f9fafb;
   padding: 20px;
   border-radius: 8px;
   border: 2px solid #e5e7eb;
 }
-
 .result-title {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
-
 .result-details {
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
-
 .result-scores {
   font-size: 0.9rem;
   color: #6b7280;
 }
 
+/* ---------- カード ---------- */
 .cards-container {
-  background: white;
+  background: #fff;
   border-radius: 10px;
   padding: 20px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
-
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 15px;
   justify-items: center;
 }
-
 .card {
   width: 80px;
   height: 100px;
@@ -454,43 +462,31 @@ function suitClass(s) {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: background 0.3s, border-color 0.3s;
   font-weight: bold;
   font-size: 0.9rem;
 }
-
-.card.selectable:hover {
-  border-color: #2563eb;
-  background: #eff6ff;
+.card:hover {
+  background: #f3f4f6;
 }
-
 .card.selected {
   border-color: #2563eb;
   background: #dbeafe;
 }
-
-.card.player-b-choice {
-  border-color: #dc2626;
-  background: #fee2e2;
-}
-
 .card.revealed {
-  background: white;
+  background: #fff;
 }
-
-.card.hidden {
-  background: #4b5563;
-  color: white;
+.card-back {
+  color: #fff;
 }
-
 .card-heart {
   color: #dc2626;
 }
-
 .card-spade {
   color: #000;
 }
 
+/* ---------- 点滅ヒント ---------- */
 .card.hint {
   animation: blink 1s infinite alternate;
   border-color: #facc15;
@@ -504,38 +500,36 @@ function suitClass(s) {
   }
 }
 
+/* ---------- ルール ---------- */
 .rules {
-  background: white;
+  background: #fff;
   border-radius: 10px;
   padding: 20px;
   margin-top: 30px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
-
 .rules-title {
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: 600;
-  margin-bottom: 15px;
+  margin-bottom: 12px;
 }
-
 .rules-list {
   font-size: 0.9rem;
   color: #4b5563;
   line-height: 1.6;
 }
 
+/* ---------- ゲームオーバー ---------- */
 .game-over {
   text-align: center;
 }
-
 .game-over-title {
-  font-size: 2rem;
+  font-size: 1.8rem;
   font-weight: bold;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
-
 .game-over-winner {
-  font-size: 1.2rem;
-  margin-bottom: 30px;
+  font-size: 1.1rem;
+  margin-bottom: 25px;
 }
 </style>

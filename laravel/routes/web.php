@@ -12,6 +12,10 @@ Route::get('/example', function () {
     return view('frontend');
 });
 
+Route::get('/{any}', function () {
+    return view('frontend');
+})->where('any', '.*');
+
 Route::prefix('resources')
     ->as('resources.')
     ->group(function () {

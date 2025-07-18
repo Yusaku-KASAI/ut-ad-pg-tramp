@@ -3,6 +3,7 @@ import { defineConfig } from "vite";
 import laravel from "laravel-vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import vue from "@vitejs/plugin-vue";
+import cesium from "vite-plugin-cesium";
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -34,7 +35,14 @@ export default defineConfig({
         },
       },
     }),
+    cesium(),
+    // cp -r node_modules/cesium/Build/Cesium public/cesium
+    // これで開発環境とりあえず動かした
   ],
+  define: {
+    // この値とプラグインの default('/cesium') を合わせる
+    CESIUM_BASE_URL: JSON.stringify("/cesium"),
+  },
   server: {
     host: true,
   },
